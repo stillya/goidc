@@ -5,7 +5,7 @@ This package provides a simple way to authenticate users with OpenID Connect and
 ### NOTE: This package is still in development and not ready for production use.
 
 * Support for different OpenID Connect providers(currently tested with Keycloak, but should work with any provider)
-* Support for different authentication flows (currently tested with Authorization Code Flow, but should work with any flow)
+* Support for different authentication flows (currently tested with Authorization Code Flow, but others in progress)
 * JWKS and PEM key support.
 * Custom storage for users. Default is PostgreSQL, but you can implement your own storage.
 
