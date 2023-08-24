@@ -22,7 +22,7 @@ type TokenService interface {
 
 type UserStore interface {
 	FindUser(username string) (*user.User, error)
-	PutUser(username string) error
+	PutUser(user *user.User) error
 }
 
 type Provider interface {
@@ -37,7 +37,8 @@ type Service struct {
 	userStore    UserStore
 	providers    map[string]Provider
 	mapUserFunc  func(u map[string]interface{}) (*user.User, error)
-	logger       logger.L
+
+	logger.L
 }
 
 type Opts struct {
@@ -55,20 +56,20 @@ type Opts struct {
 	UserStore   UserStore
 	MapUserFunc func(u map[string]interface{}) (*user.User, error)
 
-	logger logger.L
+	logger.L
 }
 
 func NewService(opts Opts) (*Service, error) {
-	if opts.logger == nil {
-		opts.logger = logger.Std
+	if opts.L == nil {
+		opts.L = logger.Std
 	}
 
 	s := &Service{
 		opts:        opts,
-		logger:      opts.logger,
 		userStore:   opts.UserStore,
 		mapUserFunc: opts.MapUserFunc,
 		providers:   make(map[string]Provider),
+		L:           opts.L,
 	}
 
 	if opts.UseAsymmetricEnc {
@@ -78,7 +79,7 @@ func NewService(opts Opts) (*Service, error) {
 			Issuer:               opts.Issuer,
 			AccessTokenLifetime:  opts.AccessTokenLifetime,
 			RefreshTokenLifetime: opts.RefreshTokenLifetime,
-			Logger:               opts.logger,
+			L:                    opts.L,
 		})
 		if err != nil {
 			return nil, err
@@ -130,31 +131,35 @@ func (s *Service) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	providerName := r.URL.Query().Get("provider")
 	if providerName == "" {
 		http.Error(w, "provider not found", http.StatusBadRequest)
+		s.Logf("[ERROR] provider not found")
 		return
 	}
 
 	p, err := s.GetProvider(providerName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.Logf("[ERROR] failed to get provider: %s", err)
 		return
 	}
 
 	u, err := p.CallbackHandler(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.Logf("[ERROR] failed to get user info: %s", err)
 		return
 	}
 
 	mappedUser, err := s.mapUserFunc(u)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.Logf("[ERROR] failed to map user: %s", err)
 		return
 	}
 
 	if _, err := s.userStore.FindUser(mappedUser.Username); err != nil {
-		err = s.userStore.PutUser(mappedUser.Username)
+		err = s.userStore.PutUser(mappedUser)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			s.Logf("[ERROR] failed to put user: %s", err)
 			return
 		}
 	}
@@ -162,11 +167,13 @@ func (s *Service) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	accessToken, err := s.tokenService.BuildToken(mappedUser.Username, u, "access_token")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.Logf("[ERROR] failed to build access token: %s", err)
 		return
 	}
 	refreshToken, err := s.tokenService.BuildToken(mappedUser.Username, u, "refresh_token")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.Logf("[ERROR] failed to build refresh token: %s", err)
 		return
 	}
 
@@ -175,7 +182,6 @@ func (s *Service) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, &accessTokenCookie)
 	http.SetCookie(w, &refreshTokenCookie)
-
 }
 
 func (s *Service) PublicKeySetHandler(w http.ResponseWriter, _ *http.Request) {

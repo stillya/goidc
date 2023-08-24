@@ -2,10 +2,10 @@ package provider
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/stillya/goidc/logger"
 	"golang.org/x/oauth2"
 	"io"
 	"net/http"
@@ -29,6 +29,14 @@ type Params struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
+
+	logger.L
+}
+
+type HandshakeState struct {
+	From       string
+	ProviderID string
+	CSRFToken  string
 }
 
 type WellKnown struct {
@@ -65,7 +73,12 @@ func InitProvider(ctx context.Context, params Params, name string) (*Provider, e
 		return nil, fmt.Errorf("failed to get well-known: %w", err)
 	}
 
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			params.Logf("[WARN] failed to close response body, %s", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get well-known: %s", resp.Status)
@@ -99,28 +112,30 @@ func (p *Provider) Name() string {
 }
 
 func (p *Provider) LoginHandler(w http.ResponseWriter, r *http.Request) {
-	state, err := randToken(32)
+	from := r.URL.Query().Get("from")
+
+	state, err := p.setProviderState(w, &HandshakeState{
+		From:       from,
+		ProviderID: p.name,
+		CSRFToken:  "test",
+	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		p.Logf("[ERROR] failed to set provider state: %s", err)
 		return
 	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:  "state",
-		Value: state,
-	})
 
 	http.Redirect(w, r, p.authorizationEndpoint+"?response_type=code&client_id="+p.ClientID+"&state="+state+"&redirect_uri="+p.getRedirectURL()+"&scope=openid", http.StatusFound)
 }
 
 func (p *Provider) CallbackHandler(w http.ResponseWriter, r *http.Request) (map[string]interface{}, error) {
-	state, err := r.Cookie("state")
+	state, encState, err := p.getProviderState(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, fmt.Errorf("state not found")
+		return nil, fmt.Errorf("failed to get provider state: %w", err)
 	}
 
-	if r.URL.Query().Get("state") != state.Value {
+	if r.URL.Query().Get("state") != encState {
 		http.Error(w, "state did not match", http.StatusBadRequest)
 		return nil, fmt.Errorf("state did not match")
 	}
@@ -148,6 +163,13 @@ func (p *Provider) CallbackHandler(w http.ResponseWriter, r *http.Request) (map[
 		return nil, fmt.Errorf("failed to get userinfo: %w", err)
 	}
 
+	if state.From != "" {
+		http.Redirect(w, r, state.From, http.StatusFound)
+	} else {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = w.Write([]byte(fmt.Sprintf("%+v", u)))
+	}
+
 	return u, nil
 }
 
@@ -166,7 +188,12 @@ func (p *Provider) Exchange(code string) (*oauth2.Token, error) {
 		return nil, fmt.Errorf("failed to post form: %w", err)
 	}
 
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			p.Logf("[WARN] failed to close response body, %s", err)
+		}
+	}(resp.Body)
 
 	var token oauth2.Token
 	err = json.NewDecoder(resp.Body).Decode(&token)
@@ -190,7 +217,12 @@ func (p *Provider) UserInfo(token *oauth2.Token) (map[string]interface{}, error)
 		return nil, fmt.Errorf("failed to get userinfo: %w", err)
 	}
 
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			p.Logf("[WARN] failed to close response body, %s", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, err
@@ -222,15 +254,35 @@ func ClientContext(ctx context.Context, client *http.Client) context.Context {
 	return context.WithValue(ctx, oauth2.HTTPClient, client)
 }
 
-func randToken(size int) (string, error) {
-	randBytes := make([]byte, size)
-	_, err := rand.Read(randBytes)
-	if err != nil {
-		return "", fmt.Errorf("failed to read random bytes: %w", err)
-	}
-	return base64.URLEncoding.EncodeToString(randBytes), nil
-}
-
 func (p *Provider) getRedirectURL() string {
 	return p.RedirectURL + "?provider=" + p.name
+}
+
+func (p *Provider) getProviderState(r *http.Request) (*HandshakeState, string, error) {
+	cookie, err := r.Cookie(p.name + "-cookie-state")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get cookie: %w", err)
+	}
+
+	state := &HandshakeState{}
+	err = json.Unmarshal([]byte(cookie.Value), state)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to unmarshal cookie: %w", err)
+	}
+
+	return state, cookie.Value, nil
+}
+
+func (p *Provider) setProviderState(w http.ResponseWriter, state *HandshakeState) (string, error) {
+	encState, err := json.Marshal(state)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:  p.name + "-cookie-state",
+		Value: base64.URLEncoding.EncodeToString(encState),
+	})
+
+	return base64.URLEncoding.EncodeToString(encState), nil
 }

@@ -17,7 +17,8 @@ type JWKService struct {
 	issuer               string
 	accessTokenValidity  time.Duration
 	refreshTokenValidity time.Duration
-	logger               logger.L
+
+	logger.L
 }
 
 type Opts struct {
@@ -26,7 +27,8 @@ type Opts struct {
 	Issuer               string
 	AccessTokenLifetime  time.Duration
 	RefreshTokenLifetime time.Duration
-	Logger               logger.L
+
+	logger.L
 }
 
 func NewJWKService(opts Opts) (*JWKService, error) {
@@ -52,7 +54,7 @@ func NewJWKService(opts Opts) (*JWKService, error) {
 		issuer:               opts.Issuer,
 		accessTokenValidity:  opts.AccessTokenLifetime,
 		refreshTokenValidity: opts.RefreshTokenLifetime,
-		logger:               opts.Logger,
+		L:                    opts.L,
 	}, nil
 }
 
