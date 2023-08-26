@@ -18,6 +18,7 @@ type TokenService interface {
 	GetPublicKeySet() jwk.Set // only for asymmetric encryption
 	BuildToken(subject string, metadata map[string]interface{}, tokenType string) (string, error)
 	ParseToken(token string) (*jwt.Token, error)
+	RenewToken(refreshToken string) (string, error)
 }
 
 type UserStore interface {
@@ -28,20 +29,20 @@ type UserStore interface {
 type Provider interface {
 	Name() string
 	LoginHandler(w http.ResponseWriter, r *http.Request)
-	CallbackHandler(w http.ResponseWriter, r *http.Request) (map[string]interface{}, error)
+	CallbackHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type Service struct {
 	opts         Opts
 	tokenService TokenService
-	userStore    UserStore
 	providers    map[string]Provider
-	mapUserFunc  func(u map[string]interface{}) (*user.User, error)
 
 	logger.L
 }
 
 type Opts struct {
+	BaseURL string
+
 	UseAsymmetricEnc bool
 	PublicKey        string
 	PrivateKey       string
@@ -53,8 +54,15 @@ type Opts struct {
 	AccessTokenLifetime  time.Duration
 	RefreshTokenLifetime time.Duration
 
-	UserStore   UserStore
+	DisableXSRF bool
+
+	AccessTokenCookieName  string // default: ACCESS_TOKEN
+	RefreshTokenCookieName string // default: REFRESH_TOKEN
+	XSRFCookieName         string // default: XSRF_TOKEN
+
 	MapUserFunc func(u map[string]interface{}) (*user.User, error)
+
+	UserStore UserStore
 
 	logger.L
 }
@@ -65,11 +73,9 @@ func NewService(opts Opts) (*Service, error) {
 	}
 
 	s := &Service{
-		opts:        opts,
-		userStore:   opts.UserStore,
-		mapUserFunc: opts.MapUserFunc,
-		providers:   make(map[string]Provider),
-		L:           opts.L,
+		opts:      opts,
+		providers: make(map[string]Provider),
+		L:         opts.L,
 	}
 
 	if opts.UseAsymmetricEnc {
@@ -92,8 +98,22 @@ func NewService(opts Opts) (*Service, error) {
 	return s, nil
 }
 
-func (s *Service) AddProvider(ctx context.Context, params provider.Params, name string) error {
-	p, err := provider.InitProvider(ctx, params, name)
+func (s *Service) AddProvider(ctx context.Context, issuer, name, clientSecret, clientID string) error {
+	p, err := provider.InitProvider(ctx,
+		provider.Params{
+			BaseURL:                s.opts.BaseURL,
+			Issuer:                 issuer,
+			ClientID:               clientID,
+			ClientSecret:           clientSecret,
+			DisableXSRF:            s.opts.DisableXSRF,
+			AccessTokenCookieName:  s.opts.AccessTokenCookieName,
+			RefreshTokenCookieName: s.opts.RefreshTokenCookieName,
+			XSRFCookieName:         s.opts.XSRFCookieName,
+			UserStore:              s.opts.UserStore,
+			MapUserFunc:            s.opts.MapUserFunc,
+			TokenService:           s.tokenService,
+			L:                      s.L,
+		}, name)
 	if err != nil {
 		return err
 	}
@@ -142,46 +162,7 @@ func (s *Service) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := p.CallbackHandler(w, r)
-	if err != nil {
-		s.Logf("[ERROR] failed to get user info: %s", err)
-		return
-	}
-
-	mappedUser, err := s.mapUserFunc(u)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		s.Logf("[ERROR] failed to map user: %s", err)
-		return
-	}
-
-	if _, err := s.userStore.FindUser(mappedUser.Username); err != nil {
-		err = s.userStore.PutUser(mappedUser)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			s.Logf("[ERROR] failed to put user: %s", err)
-			return
-		}
-	}
-
-	accessToken, err := s.tokenService.BuildToken(mappedUser.Username, u, "access_token")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		s.Logf("[ERROR] failed to build access token: %s", err)
-		return
-	}
-	refreshToken, err := s.tokenService.BuildToken(mappedUser.Username, u, "refresh_token")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		s.Logf("[ERROR] failed to build refresh token: %s", err)
-		return
-	}
-
-	accessTokenCookie := http.Cookie{Name: "access_token", Value: accessToken, Expires: time.Now().Add(s.opts.AccessTokenLifetime)}
-	refreshTokenCookie := http.Cookie{Name: "refresh_token", Value: refreshToken, Expires: time.Now().Add(s.opts.RefreshTokenLifetime)}
-
-	http.SetCookie(w, &accessTokenCookie)
-	http.SetCookie(w, &refreshTokenCookie)
+	p.CallbackHandler(w, r)
 }
 
 func (s *Service) PublicKeySetHandler(w http.ResponseWriter, _ *http.Request) {

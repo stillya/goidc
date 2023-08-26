@@ -5,12 +5,32 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/stillya/goidc/logger"
+	"github.com/stillya/goidc/user"
 	"golang.org/x/oauth2"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 )
+
+const stateCookieTimeout = time.Minute * 15
+const defaultAccessCookieName = "ACCESS_TOKEN"
+const defaultRefreshCookieName = "REFRESH_TOKEN"
+const handshakeStateCookieName = "_COOKIE_STATE"
+const defaultXSRFCookieName = "XSRF_TOKEN"
+
+type TokenService interface {
+	BuildToken(subject string, metadata map[string]interface{}, tokenType string) (string, error)
+	ParseToken(token string) (*jwt.Token, error)
+}
+
+type UserStore interface {
+	FindUser(username string) (*user.User, error)
+	PutUser(user *user.User) error
+}
 
 type Provider struct {
 	Params
@@ -25,10 +45,21 @@ type Provider struct {
 }
 
 type Params struct {
+	BaseURL      string
 	Issuer       string
 	ClientID     string
 	ClientSecret string
-	RedirectURL  string
+
+	DisableXSRF bool
+
+	AccessTokenCookieName  string
+	RefreshTokenCookieName string
+	XSRFCookieName         string
+
+	UserStore    UserStore
+	TokenService TokenService
+
+	MapUserFunc func(u map[string]interface{}) (*user.User, error)
 
 	logger.L
 }
@@ -62,7 +93,7 @@ type UserInfo struct {
 func InitProvider(ctx context.Context, params Params, name string) (*Provider, error) {
 	c := getClient(ctx)
 
-	wellKnownURL := params.Issuer + "/.well-known/openid-configuration"
+	wellKnownURL := strings.TrimSuffix(params.Issuer, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnownURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -93,6 +124,13 @@ func InitProvider(ctx context.Context, params Params, name string) (*Provider, e
 	err = json.Unmarshal(body, &wellKnown)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal body: %w", err)
+	}
+
+	if params.AccessTokenCookieName == "" {
+		params.AccessTokenCookieName = defaultAccessCookieName
+	}
+	if params.RefreshTokenCookieName == "" {
+		params.RefreshTokenCookieName = defaultRefreshCookieName
 	}
 
 	return &Provider{
@@ -128,40 +166,87 @@ func (p *Provider) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, p.authorizationEndpoint+"?response_type=code&client_id="+p.ClientID+"&state="+state+"&redirect_uri="+p.getRedirectURL()+"&scope=openid", http.StatusFound)
 }
 
-func (p *Provider) CallbackHandler(w http.ResponseWriter, r *http.Request) (map[string]interface{}, error) {
+func (p *Provider) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	state, encState, err := p.getProviderState(r)
 	if err != nil {
+		p.Logf("[ERROR] failed to get provider state: %s", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, fmt.Errorf("failed to get provider state: %w", err)
+		return
 	}
 
 	if r.URL.Query().Get("state") != encState {
-		http.Error(w, "state did not match", http.StatusBadRequest)
-		return nil, fmt.Errorf("state did not match")
+		p.Logf("[ERROR] state did not match")
+		http.Error(w, "state did not match", http.StatusForbidden)
+		return
 	}
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
+		p.Logf("[ERROR] code not found")
 		http.Error(w, "code not found", http.StatusBadRequest)
-		return nil, fmt.Errorf("code not found")
+		return
 	}
 
 	token, err := p.Exchange(code)
 	if err != nil {
+		p.Logf("[ERROR] failed to exchange code: %s", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, fmt.Errorf("failed to exchange code: %w", err)
+		return
 	}
 
 	if token.AccessToken == "" {
+		p.Logf("[ERROR] token not found")
 		http.Error(w, "token not found", http.StatusBadRequest)
-		return nil, fmt.Errorf("token not found")
+		return
 	}
 
 	u, err := p.UserInfo(token)
 	if err != nil {
+		p.Logf("[ERROR] failed to get user info: %s", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, fmt.Errorf("failed to get userinfo: %w", err)
+		return
 	}
+
+	if err != nil {
+		p.Logf("[ERROR] failed to get user info: %s", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	mappedUser, err := p.MapUserFunc(u)
+	if err != nil {
+		p.Logf("[ERROR] failed to map user: %s", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if _, err := p.UserStore.FindUser(mappedUser.Username); err != nil {
+		err = p.UserStore.PutUser(mappedUser)
+		if err != nil {
+			p.Logf("[ERROR] failed to put user: %s", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	accessToken, err := p.TokenService.BuildToken(mappedUser.Username, u, "access_token")
+	if err != nil {
+		p.Logf("[ERROR] failed to build access token: %s", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	refreshToken, err := p.TokenService.BuildToken(mappedUser.Username, u, "refresh_token")
+	if err != nil {
+		p.Logf("[ERROR] failed to build refresh token: %s", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	accessTokenCookie := http.Cookie{Name: p.AccessTokenCookieName, Value: base64.URLEncoding.EncodeToString([]byte(accessToken)), Path: "/"}
+	refreshTokenCookie := http.Cookie{Name: p.RefreshTokenCookieName, Value: base64.URLEncoding.EncodeToString([]byte(refreshToken)), Path: "/"}
+
+	http.SetCookie(w, &accessTokenCookie)
+	http.SetCookie(w, &refreshTokenCookie)
 
 	if state.From != "" {
 		http.Redirect(w, r, state.From, http.StatusFound)
@@ -169,8 +254,6 @@ func (p *Provider) CallbackHandler(w http.ResponseWriter, r *http.Request) (map[
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write([]byte(fmt.Sprintf("%+v", u)))
 	}
-
-	return u, nil
 }
 
 func (p *Provider) Exchange(code string) (*oauth2.Token, error) {
@@ -255,34 +338,51 @@ func ClientContext(ctx context.Context, client *http.Client) context.Context {
 }
 
 func (p *Provider) getRedirectURL() string {
-	return p.RedirectURL + "?provider=" + p.name
+	return strings.TrimSuffix(p.BaseURL, "/") + "/callback" + "?provider=" + p.name
 }
 
 func (p *Provider) getProviderState(r *http.Request) (*HandshakeState, string, error) {
-	cookie, err := r.Cookie(p.name + "-cookie-state")
+	cookie, err := r.Cookie(strings.ToUpper(p.name) + handshakeStateCookieName)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get cookie: %w", err)
 	}
 
 	state := &HandshakeState{}
-	err = json.Unmarshal([]byte(cookie.Value), state)
+	err = state.Decode(cookie.Value)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to unmarshal cookie: %w", err)
+		return nil, "", fmt.Errorf("failed to decode state: %w", err)
 	}
 
 	return state, cookie.Value, nil
 }
 
 func (p *Provider) setProviderState(w http.ResponseWriter, state *HandshakeState) (string, error) {
-	encState, err := json.Marshal(state)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal state: %w", err)
-	}
-
+	encState := state.Encode()
 	http.SetCookie(w, &http.Cookie{
-		Name:  p.name + "-cookie-state",
-		Value: base64.URLEncoding.EncodeToString(encState),
+		Name:    strings.ToUpper(p.name) + handshakeStateCookieName,
+		Value:   encState,
+		Path:    "/",
+		Expires: time.Now().Add(stateCookieTimeout),
 	})
 
-	return base64.URLEncoding.EncodeToString(encState), nil
+	return encState, nil
+}
+
+func (s *HandshakeState) Encode() string {
+	b, _ := json.Marshal(s)
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+func (s *HandshakeState) Decode(str string) error {
+	b, err := base64.URLEncoding.DecodeString(str)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(b, s)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

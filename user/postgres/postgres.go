@@ -31,7 +31,8 @@ func NewDB(c Config) (*DB, error) {
 
 func (p *DB) FindUser(username string) (*user.User, error) {
 	var u user.User
-	err := p.pool.QueryRow(context.Background(), "SELECT user_id, username, attributes, enabled FROM users WHERE username = $1", username).Scan(&u.UserID, &u.Username, &u.Enabled)
+	err := p.pool.QueryRow(context.Background(), "SELECT user_id, username, attributes, disabled FROM users WHERE username = $1",
+		username).Scan(&u.UserID, &u.Username, &u.Attributes, &u.Disabled)
 	if err != nil {
 		return nil, fmt.Errorf("can't find u, %v", err)
 	}
@@ -39,7 +40,8 @@ func (p *DB) FindUser(username string) (*user.User, error) {
 }
 
 func (p *DB) PutUser(u *user.User) error {
-	_, err := p.pool.Exec(context.Background(), "INSERT INTO users (user_id, username, attributes, enabled) VALUES ($1, $2, $3, $4)", u.UserID, u.Username, u.Attributes, u.Enabled)
+	_, err := p.pool.Exec(context.Background(), "INSERT INTO users (user_id, username, attributes, disabled) VALUES ($1, $2, $3, $4)",
+		u.UserID, u.Username, u.Attributes, u.Disabled)
 	if err != nil {
 		return fmt.Errorf("can't insert u, %v", err)
 	}
