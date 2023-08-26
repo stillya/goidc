@@ -60,8 +60,6 @@ type Opts struct {
 	RefreshTokenCookieName string // default: REFRESH_TOKEN
 	XSRFCookieName         string // default: XSRF_TOKEN
 
-	MapUserFunc func(u map[string]interface{}) (*user.User, error)
-
 	UserStore UserStore
 
 	logger.L
@@ -98,20 +96,29 @@ func NewService(opts Opts) (*Service, error) {
 	return s, nil
 }
 
-func (s *Service) AddProvider(ctx context.Context, issuer, name, clientSecret, clientID string) error {
+type ProviderParams struct {
+	Issuer       string
+	ClientID     string
+	ClientSecret string
+	Scopes       []string
+	MapUserFunc  func(u map[string]interface{}) (*user.User, error)
+}
+
+func (s *Service) AddProvider(ctx context.Context, params ProviderParams, name string) error {
 	p, err := provider.InitProvider(ctx,
 		provider.Params{
 			BaseURL:                s.opts.BaseURL,
-			Issuer:                 issuer,
-			ClientID:               clientID,
-			ClientSecret:           clientSecret,
+			Issuer:                 params.Issuer,
+			ClientID:               params.ClientID,
+			ClientSecret:           params.ClientSecret,
 			DisableXSRF:            s.opts.DisableXSRF,
 			AccessTokenCookieName:  s.opts.AccessTokenCookieName,
 			RefreshTokenCookieName: s.opts.RefreshTokenCookieName,
 			XSRFCookieName:         s.opts.XSRFCookieName,
 			UserStore:              s.opts.UserStore,
-			MapUserFunc:            s.opts.MapUserFunc,
+			MapUserFunc:            params.MapUserFunc,
 			TokenService:           s.tokenService,
+			Scopes:                 params.Scopes,
 			L:                      s.L,
 		}, name)
 	if err != nil {

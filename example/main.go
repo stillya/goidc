@@ -13,10 +13,18 @@ import (
 func main() {
 	ctx := context.Background()
 
-	mapUserFunc := func(u map[string]interface{}) (*user.User, error) {
+	keycloakMapUserFunc := func(u map[string]interface{}) (*user.User, error) {
 		return &user.User{
 			UserID:     u["sub"].(string),
 			Username:   u["preferred_username"].(string),
+			Attributes: u,
+		}, nil
+	}
+
+	googleMapUserFunc := func(u map[string]interface{}) (*user.User, error) {
+		return &user.User{
+			UserID:     u["sub"].(string),
+			Username:   u["name"].(string),
 			Attributes: u,
 		}, nil
 	}
@@ -36,18 +44,35 @@ func main() {
 		goidc.Opts{
 			BaseURL:              "http://localhost:8085",
 			UseAsymmetricEnc:     true,
-			PublicKey:            "example/keycloak/testdata/public.jwks",
-			PrivateKey:           "example/keycloak/testdata/private.jwks",
+			PublicKey:            "example/testdata/public.jwks",
+			PrivateKey:           "example/testdata/private.jwks",
 			Issuer:               "goidc",
 			Audience:             "goidc",
 			AccessTokenLifetime:  time.Minute * 15,
 			RefreshTokenLifetime: time.Hour * 24,
 			UserStore:            userStore,
-			MapUserFunc:          mapUserFunc,
 		})
 
-	err = g.AddProvider(ctx, "https://keycloak.com/realms/test",
-		"keycloak", "test", "test-client")
+	err = g.AddProvider(ctx,
+		goidc.ProviderParams{
+			Issuer:       "https://keycloak.com/realms/test",
+			ClientID:     "test",
+			ClientSecret: "test",
+			MapUserFunc:  keycloakMapUserFunc,
+			Scopes:       []string{"openid", "profile", "email"},
+		}, "keycloak")
+	if err != nil {
+		panic(err)
+	}
+
+	err = g.AddProvider(ctx,
+		goidc.ProviderParams{
+			Issuer:       "https://accounts.google.com",
+			ClientID:     "test",
+			ClientSecret: "test",
+			MapUserFunc:  googleMapUserFunc,
+			Scopes:       []string{"openid", "profile", "email"},
+		}, "google")
 	if err != nil {
 		panic(err)
 	}

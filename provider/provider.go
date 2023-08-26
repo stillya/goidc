@@ -61,6 +61,8 @@ type Params struct {
 
 	MapUserFunc func(u map[string]interface{}) (*user.User, error)
 
+	Scopes []string
+
 	logger.L
 }
 
@@ -163,7 +165,8 @@ func (p *Provider) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, p.authorizationEndpoint+"?response_type=code&client_id="+p.ClientID+"&state="+state+"&redirect_uri="+p.getRedirectURL()+"&scope=openid", http.StatusFound)
+	http.Redirect(w, r, p.authorizationEndpoint+"?response_type=code&client_id="+p.ClientID+"&state="+state+
+		"&redirect_uri="+p.getRedirectURL()+"&scope="+p.getScopes(), http.StatusFound)
 }
 
 func (p *Provider) CallbackHandler(w http.ResponseWriter, r *http.Request) {
@@ -263,7 +266,7 @@ func (p *Provider) Exchange(code string) (*oauth2.Token, error) {
 		"client_id":     {p.ClientID},
 		"client_secret": {p.ClientSecret},
 		"redirect_uri":  {p.getRedirectURL()},
-		"scope":         {"openid"},
+		"scope":         {p.getScopes()},
 	}
 
 	resp, err := p.client.PostForm(p.tokenEndpoint, v)
@@ -366,6 +369,10 @@ func (p *Provider) setProviderState(w http.ResponseWriter, state *HandshakeState
 	})
 
 	return encState, nil
+}
+
+func (p *Provider) getScopes() string {
+	return strings.Join(p.Scopes, " ")
 }
 
 func (s *HandshakeState) Encode() string {
