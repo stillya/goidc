@@ -29,8 +29,7 @@ jobs:
 
     - name: Coverage
       run: |
-        echo ${COVERALLS_TOKEN}
         go install github.com/mattn/goveralls@latest
         goveralls -coverprofile=covprofile -service=github
-      env:
-        COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # env:
+      #   COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
