@@ -68,8 +68,8 @@ func main() {
 		goidc.Opts{
 			BaseURL:              "http://localhost:8085",
 			UseAsymmetricEnc:     true,
-			PublicKey:            "example/testdata/public.jwks",
-			PrivateKey:           "example/testdata/private.jwks",
+			PublicKey:            "_example/testdata/public.jwks",
+			PrivateKey:           "_example/testdata/private.jwks",
 			Issuer:               "goidc",
 			Audience:             "goidc",
 			AccessTokenLifetime:  time.Minute * 15,
