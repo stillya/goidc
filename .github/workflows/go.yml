@@ -25,12 +25,12 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      run: go test -v -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...
+      run: go test -v --covermode atomic -coverprofile=covprofile ./...
 
     - name: Coverage
       run: |
         echo ${COVERALLS_TOKEN}
         go install github.com/mattn/goveralls@latest
-        goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+        goveralls -coverprofile=covprofile -service=github
       env:
-        COVERALLS_TOKEN: "8kfoEqZwQdtDy6zu1daGt8M9YvHCZ5nIs"
+        COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
