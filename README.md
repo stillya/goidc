@@ -1,5 +1,8 @@
 # goidc - authentication with OpenID Connect
 
+[![Build Status](https://github.com/stillya/goidc/actions/workflows/go.yml/badge.svg)](https://github.com/stillya/goidc/actions/workflows/go.yml)
+[![Coverage](https://github.com/stillya/goidc/wiki/coverage.svg)](https://raw.githack.com/wiki/stillya/goidc/coverage.html)
+
 This package provides a simple way to authenticate users with OpenID Connect and help you to create an authentication service.
 
 ### NOTE: This package is still in development and not ready for production use.
