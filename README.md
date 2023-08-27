@@ -1,4 +1,5 @@
 # goidc - authentication with OpenID Connect
+
 [![Go Coverage](https://github.com/stillya/goidc/wiki/coverage.svg)](https://raw.githack.com/wiki/stillya/goidc/coverage.html)
 
 This package provides a simple way to authenticate users with OpenID Connect and help you to create an authentication service.
