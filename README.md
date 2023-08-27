@@ -1,11 +1,14 @@
 # goidc - authentication with OpenID Connect
 
+[![Build Status](https://github.com/stillya/goidc/actions/workflows/go.yml/badge.svg)](https://github.com/stillya/goidc/actions/workflows/go.yml)
+[![Coverage](https://coveralls.io/repos/github/stillya/goidc/badge.svg?branch=master)](https://coveralls.io/github/stillya/goidc?branch=master)
+
 This package provides a simple way to authenticate users with OpenID Connect and help you to create an authentication service.
 
 ### NOTE: This package is still in development and not ready for production use.
 
-* Support for different OpenID Connect providers(currently tested with Keycloak and Google, but should work with any other providers)
-* Support for different authentication flows (currently tested with Authorization Code Flow, but others in progress)
+* Support for different OpenID Connect providers(currently tested with Keycloak and Google, but should work with any other providers).
+* Support for different authentication flows (currently tested with Authorization Code Flow, but others in progress).
 * JWKS and PEM key support.
 * Custom storage for users. Default is PostgreSQL, but you can implement your own storage.
 
@@ -65,8 +68,8 @@ func main() {
 		goidc.Opts{
 			BaseURL:              "http://localhost:8085",
 			UseAsymmetricEnc:     true,
-			PublicKey:            "example/testdata/public.jwks",
-			PrivateKey:           "example/testdata/private.jwks",
+			PublicKey:            "_example/testdata/public.jwks",
+			PrivateKey:           "_example/testdata/private.jwks",
 			Issuer:               "goidc",
 			Audience:             "goidc",
 			AccessTokenLifetime:  time.Minute * 15,
