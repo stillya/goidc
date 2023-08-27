@@ -5,9 +5,9 @@ name: Go
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "setup-gh-actions" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "setup-gh-actions" ]
 
 jobs:
 
