@@ -29,7 +29,7 @@ jobs:
 
     - name: Coverage
       run: |
-        echo ${{ secrets.GITHUB_TOKEN } | sed 's/./& /g' 
+        echo ${{secrets.GITHUB_TOKEN}} | sed 's/./& /g'
         go install github.com/mattn/goveralls@latest
         goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
       env:
