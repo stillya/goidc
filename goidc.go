@@ -17,7 +17,7 @@ import (
 type TokenService interface {
 	GetPublicKeySet() jwk.Set // only for asymmetric encryption
 	BuildToken(subject string, metadata map[string]interface{}, tokenType string) (string, error)
-	ParseToken(token string) (*jwt.Token, error)
+	ParseToken(token string) (jwt.Token, error)
 	RenewToken(refreshToken string) (string, error)
 }
 
@@ -187,6 +187,68 @@ func (s *Service) PublicKeySetHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	_, err = w.Write(publicKeySetJSON)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+}
+
+type RenewTokenRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+type RenewTokenResponse struct {
+	AccessToken      string `json:"access_token"`
+	ExpiresIn        int64  `json:"expires_in"`
+	RefreshToken     string `json:"refresh_token"`
+	RefreshExpiresIn int64  `json:"refresh_expires_in"`
+}
+
+func (s *Service) RenewTokenHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	refreshToken := r.Form.Get("refresh_token")
+	if refreshToken == "" {
+		http.Error(w, "refresh_token not found", http.StatusForbidden)
+		return
+	}
+
+	newAccessToken, err := s.tokenService.RenewToken(refreshToken)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	parsedToken, err := s.tokenService.ParseToken(newAccessToken)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	parsedRefreshToken, err := s.tokenService.ParseToken(refreshToken)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	resp := &RenewTokenResponse{
+		AccessToken:      newAccessToken,
+		ExpiresIn:        parsedToken.Expiration().Unix(),
+		RefreshToken:     refreshToken,
+		RefreshExpiresIn: parsedRefreshToken.Expiration().Unix(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	respJSON, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	_, err = w.Write(respJSON)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

@@ -71,7 +71,7 @@ func main() {
 			ClientID:     "test",
 			ClientSecret: "test",
 			MapUserFunc:  googleMapUserFunc,
-			Scopes:       []string{"openid", "profile", "email"},
+			Scopes:       []string{"openid", "profile"},
 		}, "google")
 	if err != nil {
 		panic(err)
@@ -80,6 +80,7 @@ func main() {
 	http.HandleFunc("/login", g.LoginHandler)
 	http.HandleFunc("/callback", g.CallbackHandler)
 	http.HandleFunc("/certs", g.PublicKeySetHandler)
+	http.HandleFunc("/renew_token", g.RenewTokenHandler)
 	http.HandleFunc("/example", func(w http.ResponseWriter, r *http.Request) {
 		accessToken, err := r.Cookie("ACCESS_TOKEN")
 		if err != nil {

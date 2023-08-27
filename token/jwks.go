@@ -72,14 +72,14 @@ func (j *JWKService) BuildToken(subject string, metadata map[string]interface{},
 	}
 }
 
-func (j *JWKService) ParseToken(token string) (*jwt.Token, error) {
+func (j *JWKService) ParseToken(token string) (jwt.Token, error) {
 	if j.publicKeySet == nil {
 		return nil, nil
 	}
 
 	verifiedToken, err := jwt.Parse([]byte(token), jwt.WithKeySet(j.publicKeySet))
 
-	return &verifiedToken, err
+	return verifiedToken, err
 }
 
 func (j *JWKService) RenewToken(refreshToken string) (string, error) {
@@ -97,7 +97,7 @@ func (j *JWKService) RenewToken(refreshToken string) (string, error) {
 	claims["exp"] = time.Now().UTC().Add(j.accessTokenValidity)
 	claims["jti"] = uuid.New().String()
 
-	newToken, err := j.buildAccessToken(claims[jwt.SubjectKey].(string), claims)
+	newToken, err := j.buildAccessToken(verifiedToken.Subject(), claims)
 	if err != nil {
 		return "", err
 	}

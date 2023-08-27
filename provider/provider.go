@@ -24,7 +24,7 @@ const defaultXSRFCookieName = "XSRF_TOKEN"
 
 type TokenService interface {
 	BuildToken(subject string, metadata map[string]interface{}, tokenType string) (string, error)
-	ParseToken(token string) (*jwt.Token, error)
+	ParseToken(token string) (jwt.Token, error)
 }
 
 type UserStore interface {
@@ -245,8 +245,8 @@ func (p *Provider) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessTokenCookie := http.Cookie{Name: p.AccessTokenCookieName, Value: base64.URLEncoding.EncodeToString([]byte(accessToken)), Path: "/"}
-	refreshTokenCookie := http.Cookie{Name: p.RefreshTokenCookieName, Value: base64.URLEncoding.EncodeToString([]byte(refreshToken)), Path: "/"}
+	accessTokenCookie := http.Cookie{Name: p.AccessTokenCookieName, Value: accessToken, Path: "/"}
+	refreshTokenCookie := http.Cookie{Name: p.RefreshTokenCookieName, Value: refreshToken, Path: "/"}
 
 	http.SetCookie(w, &accessTokenCookie)
 	http.SetCookie(w, &refreshTokenCookie)
