@@ -27,9 +27,9 @@ jobs:
     - name: Test
       run: go test -v -covermode=atomic -coverprofile=$GITHUB_WORKSPACE/profile.cov ./...
 
-    - name: submit coverage
+    - name: Coverage
       run: |
         go install github.com/mattn/goveralls@latest
         goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
       env:
-          COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
