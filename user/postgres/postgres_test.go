@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestNewDB(t *testing.T) {
-	err := RecreateDB(context.Background(), container, filepath.Join("testdata", "init.sql"))
+	err := recreateDB(context.Background(), container, filepath.Join("testdata", "init.sql"))
 	if err != nil {
 		t.Errorf("RecreateDB() error = %v", err)
 		return
@@ -78,7 +78,7 @@ func TestNewDB(t *testing.T) {
 }
 
 func TestDB_FindUser(t *testing.T) {
-	err := RecreateDB(context.Background(), container, filepath.Join("testdata", "init.sql"))
+	err := recreateDB(context.Background(), container, filepath.Join("testdata", "init.sql"))
 	if err != nil {
 		t.Errorf("RecreateDB() error = %v", err)
 		return
@@ -151,7 +151,7 @@ func TestDB_FindUser(t *testing.T) {
 }
 
 func TestDB_PutUser(t *testing.T) {
-	err := RecreateDB(context.Background(), container, filepath.Join("testdata", "init.sql"))
+	err := recreateDB(context.Background(), container, filepath.Join("testdata", "init.sql"))
 	if err != nil {
 		t.Errorf("RecreateDB() error = %v", err)
 		return
@@ -238,7 +238,7 @@ func RunContainer(ctx context.Context) (*postgres.PostgresContainer, error) {
 	)
 }
 
-func RecreateDB(ctx context.Context, container *postgres.PostgresContainer, initScriptPath string) error {
+func recreateDB(ctx context.Context, container *postgres.PostgresContainer, initScriptPath string) error {
 	host, err := container.Host(ctx)
 	if err != nil {
 		return err

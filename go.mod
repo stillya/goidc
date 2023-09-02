@@ -6,6 +6,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/lestrrat-go/jwx/v2 v2.0.12
+	github.com/stillya/testcontainers-keycloak v0.1.0
 	github.com/testcontainers/testcontainers-go v0.23.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.23.0
 	golang.org/x/oauth2 v0.11.0
