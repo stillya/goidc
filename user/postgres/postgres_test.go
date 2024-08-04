@@ -226,8 +226,8 @@ func shutDown() {
 }
 
 func RunContainer(ctx context.Context) (*postgres.PostgresContainer, error) {
-	return postgres.RunContainer(ctx,
-		testcontainers.WithImage("postgres:13"),
+	return postgres.Run(ctx,
+		"postgres:14",
 		postgres.WithInitScripts(filepath.Join("testdata", "init.sql")),
 		postgres.WithDatabase("goidc"),
 		postgres.WithUsername("postgres"),

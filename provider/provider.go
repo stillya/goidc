@@ -210,12 +210,6 @@ func (p *Provider) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err != nil {
-		p.Logf("[ERROR] failed to get user info: %s", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	mappedUser, err := p.MapUserFunc(u)
 	if err != nil {
 		p.Logf("[ERROR] failed to map user: %s", err)
